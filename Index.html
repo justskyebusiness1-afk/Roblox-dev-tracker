@@ -1,0 +1,1063 @@
+import React, { useState, useEffect } from 'react';
+import { Play, Square, Trash2, Edit2, Check, X, Search, Tag, ChevronDown, ChevronRight, Pause, Download, BarChart3, Target, TrendingUp, Calendar } from 'lucide-react';
+
+const CATEGORIES = ['Scripting', 'Building', 'UI/UX', 'Bug Fixes', 'Testing', 'Design', 'Other'];
+
+export default function DevTracker() {
+  const [isTracking, setIsTracking] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [startTime, setStartTime] = useState(null);
+  const [pausedTime, setPausedTime] = useState(0);
+  const [currentNote, setCurrentNote] = useState('');
+  const [currentCategory, setCurrentCategory] = useState('');
+  const [entries, setEntries] = useState([]);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editDuration, setEditDuration] = useState('');
+  const [addingToDate, setAddingToDate] = useState(null);
+  const [newEntryNote, setNewEntryNote] = useState('');
+  const [newEntryCategory, setNewEntryCategory] = useState('');
+  const [newEntryDuration, setNewEntryDuration] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [viewMode, setViewMode] = useState('daily');
+  const [darkMode, setDarkMode] = useState(false);
+  const [expandedWeeks, setExpandedWeeks] = useState([]);
+  const [expandedDays, setExpandedDays] = useState([]);
+  const [showStats, setShowStats] = useState(false);
+  const [weeklyGoal, setWeeklyGoal] = useState(20);
+  const [editingGoal, setEditingGoal] = useState(false);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const entriesResult = await window.storage.get('roblox-dev-entries');
+        if (entriesResult && entriesResult.value) {
+          setEntries(JSON.parse(entriesResult.value));
+        }
+        
+        const darkModeResult = await window.storage.get('roblox-dev-darkmode');
+        if (darkModeResult && darkModeResult.value) {
+          setDarkMode(JSON.parse(darkModeResult.value));
+        }
+
+        const goalResult = await window.storage.get('roblox-dev-goal');
+        if (goalResult && goalResult.value) {
+          setWeeklyGoal(JSON.parse(goalResult.value));
+        }
+      } catch (error) {
+        console.log('No previous data found');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    if (!isLoading && entries.length >= 0) {
+      const saveEntries = async () => {
+        try {
+          await window.storage.set('roblox-dev-entries', JSON.stringify(entries));
+        } catch (error) {
+          console.error('Failed to save entries:', error);
+        }
+      };
+      saveEntries();
+    }
+  }, [entries, isLoading]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      const saveDarkMode = async () => {
+        try {
+          await window.storage.set('roblox-dev-darkmode', JSON.stringify(darkMode));
+        } catch (error) {
+          console.error('Failed to save dark mode preference:', error);
+        }
+      };
+      saveDarkMode();
+    }
+  }, [darkMode, isLoading]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      const saveGoal = async () => {
+        try {
+          await window.storage.set('roblox-dev-goal', JSON.stringify(weeklyGoal));
+        } catch (error) {
+          console.error('Failed to save goal:', error);
+        }
+      };
+      saveGoal();
+    }
+  }, [weeklyGoal, isLoading]);
+
+  useEffect(() => {
+    let interval;
+    if (isTracking && !isPaused && startTime) {
+      interval = setInterval(() => {
+        setElapsedSeconds(pausedTime + Math.floor((Date.now() - startTime) / 1000));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isTracking, isPaused, startTime, pausedTime]);
+
+  const startTracking = () => {
+    setStartTime(Date.now());
+    setIsTracking(true);
+    setIsPaused(false);
+    setElapsedSeconds(0);
+    setPausedTime(0);
+  };
+
+  const pauseTracking = () => {
+    if (isTracking && !isPaused) {
+      setPausedTime(pausedTime + Math.floor((Date.now() - startTime) / 1000));
+      setIsPaused(true);
+    }
+  };
+
+  const resumeTracking = () => {
+    if (isTracking && isPaused) {
+      setStartTime(Date.now());
+      setIsPaused(false);
+    }
+  };
+
+  const stopTracking = () => {
+    if (startTime && currentNote.trim()) {
+      const finalDuration = isPaused ? pausedTime : pausedTime + Math.floor((Date.now() - startTime) / 1000);
+      const newEntry = {
+        id: Date.now(),
+        date: new Date().toISOString().split('T')[0],
+        note: currentNote,
+        category: currentCategory || 'Other',
+        duration: finalDuration
+      };
+      setEntries([newEntry, ...entries]);
+      setCurrentNote('');
+      setCurrentCategory('');
+    }
+    setIsTracking(false);
+    setIsPaused(false);
+    setStartTime(null);
+    setElapsedSeconds(0);
+    setPausedTime(0);
+  };
+
+  const deleteEntry = (id) => {
+    setEntries(entries.filter(entry => entry.id !== id));
+  };
+
+  const startEditing = (entry) => {
+    setEditingId(entry.id);
+    setEditText(entry.note);
+    setEditCategory(entry.category || 'Other');
+    const hours = Math.floor(entry.duration / 3600);
+    const minutes = Math.floor((entry.duration % 3600) / 60);
+    setEditDuration(`${hours}:${minutes.toString().padStart(2, '0')}`);
+  };
+
+  const saveEdit = (id) => {
+    if (editText.trim() && editDuration) {
+      const [hours, minutes] = editDuration.split(':').map(Number);
+      const newDuration = (hours * 3600) + (minutes * 60);
+      setEntries(entries.map(entry => 
+        entry.id === id ? { ...entry, note: editText, category: editCategory, duration: newDuration } : entry
+      ));
+    }
+    setEditingId(null);
+    setEditText('');
+    setEditCategory('');
+    setEditDuration('');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText('');
+    setEditCategory('');
+    setEditDuration('');
+  };
+
+  const addManualEntry = () => {
+    if (newEntryNote.trim() && newEntryDuration && addingToDate) {
+      const [hours, minutes] = newEntryDuration.split(':').map(Number);
+      const duration = (hours * 3600) + (minutes * 60);
+      const newEntry = {
+        id: Date.now(),
+        date: addingToDate,
+        note: newEntryNote,
+        category: newEntryCategory || 'Other',
+        duration: duration
+      };
+      setEntries([newEntry, ...entries].sort((a, b) => new Date(b.date) - new Date(a.date)));
+      setNewEntryNote('');
+      setNewEntryCategory('');
+      setNewEntryDuration('');
+      setAddingToDate(null);
+    }
+  };
+
+  const cancelAddEntry = () => {
+    setAddingToDate(null);
+    setNewEntryNote('');
+    setNewEntryCategory('');
+    setNewEntryDuration('');
+  };
+
+  const exportToCSV = () => {
+    const headers = ['Date', 'Category', 'Note', 'Duration (hours)'];
+    const rows = entries.map(entry => [
+      entry.date,
+      entry.category || 'Other',
+      entry.note.replace(/"/g, '""'),
+      (entry.duration / 3600).toFixed(2)
+    ]);
+    
+    const csv = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `roblox-dev-tracker-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const formatTime = (seconds) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const formatHours = (seconds) => {
+    return (seconds / 3600).toFixed(1);
+  };
+
+  const getWeekStart = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day;
+    return new Date(d.setDate(diff)).toISOString().split('T')[0];
+  };
+
+  const getPastDays = () => {
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      days.push(date.toISOString().split('T')[0]);
+    }
+    return days;
+  };
+
+  const getPastWeeks = () => {
+    const weeks = [];
+    const today = new Date();
+    for (let i = 0; i < 4; i++) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - (i * 7));
+      const weekStart = getWeekStart(date.toISOString().split('T')[0]);
+      if (!weeks.includes(weekStart)) {
+        weeks.push(weekStart);
+      }
+    }
+    return weeks;
+  };
+
+  const getDayLabel = (date) => {
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    
+    if (date === today) return 'Today';
+    if (date === yesterday) return 'Yesterday';
+    
+    const d = new Date(date);
+    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  };
+
+  const getWeekLabel = (weekStart) => {
+    const start = new Date(weekStart);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    
+    const thisWeekStart = getWeekStart(new Date().toISOString().split('T')[0]);
+    if (weekStart === thisWeekStart) return 'This Week';
+    
+    return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  };
+
+  const filterEntries = (entryList) => {
+    return entryList.filter(entry => {
+      const matchesSearch = entry.note.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = !filterCategory || entry.category === filterCategory;
+      return matchesSearch && matchesCategory;
+    });
+  };
+
+  const getEntriesForDay = (date) => {
+    return filterEntries(entries.filter(entry => entry.date === date));
+  };
+
+  const getEntriesForWeek = (weekStart) => {
+    const start = new Date(weekStart);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    
+    return filterEntries(entries.filter(entry => {
+      const entryDate = new Date(entry.date);
+      return entryDate >= start && entryDate <= end;
+    }));
+  };
+
+  const getTotalTime = (entryList) => {
+    const total = entryList.reduce((sum, entry) => sum + entry.duration, 0);
+    return formatTime(total);
+  };
+
+  const getTotalSeconds = (entryList) => {
+    return entryList.reduce((sum, entry) => sum + entry.duration, 0);
+  };
+
+  const getCategoryBreakdown = (entryList) => {
+    const breakdown = {};
+    entryList.forEach(entry => {
+      const cat = entry.category || 'Other';
+      breakdown[cat] = (breakdown[cat] || 0) + entry.duration;
+    });
+    return breakdown;
+  };
+
+  const toggleWeek = (weekStart) => {
+    if (expandedWeeks.includes(weekStart)) {
+      setExpandedWeeks(expandedWeeks.filter(w => w !== weekStart));
+    } else {
+      setExpandedWeeks([...expandedWeeks, weekStart]);
+    }
+  };
+
+  const toggleDay = (date) => {
+    if (expandedDays.includes(date)) {
+      setExpandedDays(expandedDays.filter(d => d !== date));
+    } else {
+      setExpandedDays([...expandedDays, date]);
+    }
+  };
+
+  const thisWeekEntries = getEntriesForWeek(getWeekStart(new Date().toISOString().split('T')[0]));
+  const thisWeekHours = getTotalSeconds(thisWeekEntries) / 3600;
+  const goalProgress = (thisWeekHours / weeklyGoal) * 100;
+
+  if (isLoading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-pink-50 to-purple-50'}`}>
+        <div className={darkMode ? 'text-gray-400' : 'text-pink-400'}>Loading...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`min-h-screen p-4 md:p-6 ${darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-pink-50 to-purple-50'}`}>
+      <div className="max-w-4xl mx-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className={`text-2xl md:text-3xl font-bold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
+            🎮 Roblox Dev Tracker
+          </h1>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowStats(!showStats)}
+              className={`px-3 py-2 rounded transition ${darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-white text-gray-700 hover:bg-gray-50 shadow-sm'}`}
+            >
+              <BarChart3 size={20} />
+            </button>
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className={`px-4 py-2 rounded transition ${darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-white text-gray-700 hover:bg-gray-50 shadow-sm'}`}
+            >
+              {darkMode ? '☀️' : '🌙'}
+            </button>
+          </div>
+        </div>
+
+        {/* Weekly Goal Progress */}
+        <div className={`rounded-xl p-5 shadow-lg mb-6 ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'}`}>
+          <div className="flex justify-between items-center mb-3">
+            <div className="flex items-center gap-2">
+              <Target size={20} className={darkMode ? 'text-purple-400' : 'text-purple-600'} />
+              <h3 className={`font-semibold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>Weekly Goal</h3>
+            </div>
+            {!editingGoal ? (
+              <button
+                onClick={() => setEditingGoal(true)}
+                className={`text-sm px-3 py-1 rounded ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                {weeklyGoal}h / week
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={weeklyGoal}
+                  onChange={(e) => setWeeklyGoal(Math.max(1, parseInt(e.target.value) || 1))}
+                  className={`w-20 px-2 py-1 border rounded text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-300'}`}
+                  autoFocus
+                />
+                <button onClick={() => setEditingGoal(false)} className="text-green-600 hover:text-green-700">
+                  <Check size={18} />
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="mb-2">
+            <div className={`h-3 rounded-full overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+              <div 
+                className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500"
+                style={{ width: `${Math.min(goalProgress, 100)}%` }}
+              />
+            </div>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>
+              {thisWeekHours.toFixed(1)}h / {weeklyGoal}h
+            </span>
+            <span className={`font-semibold ${goalProgress >= 100 ? 'text-green-500' : darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+              {goalProgress.toFixed(0)}%
+            </span>
+          </div>
+        </div>
+        
+        {/* Timer Section */}
+        <div className={`rounded-xl p-6 shadow-lg mb-6 ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'}`}>
+          <div className={`text-5xl font-light mb-5 text-center tabular-nums ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
+            {formatTime(elapsedSeconds)}
+          </div>
+          
+          <input
+            type="text"
+            value={currentNote}
+            onChange={(e) => setCurrentNote(e.target.value)}
+            placeholder="What are you working on?"
+            className={`w-full px-4 py-3 border rounded-lg mb-3 focus:outline-none focus:ring-2 ${
+              darkMode 
+                ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400 focus:ring-purple-500' 
+                : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-400'
+            }`}
+          />
+
+          <select
+            value={currentCategory}
+            onChange={(e) => setCurrentCategory(e.target.value)}
+            className={`w-full px-4 py-3 border rounded-lg mb-4 focus:outline-none focus:ring-2 ${
+              darkMode 
+                ? 'bg-gray-700 border-gray-600 text-gray-100 focus:ring-purple-500' 
+                : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-400'
+            }`}
+          >
+            <option value="">Select category...</option>
+            {CATEGORIES.map(cat => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
+          
+          <div className="flex gap-2">
+            {!isTracking ? (
+              <button
+                onClick={startTracking}
+                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 shadow-md"
+              >
+                <Play size={20} />
+                Start
+              </button>
+            ) : (
+              <>
+                {!isPaused ? (
+                  <button
+                    onClick={pauseTracking}
+                    className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition shadow-md ${
+                      darkMode 
+                        ? 'bg-yellow-600 text-white hover:bg-yellow-700' 
+                        : 'bg-amber-500 text-white hover:bg-amber-600'
+                    }`}
+                  >
+                    <Pause size={20} />
+                    Pause
+                  </button>
+                ) : (
+                  <button
+                    onClick={resumeTracking}
+                    className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition shadow-md ${
+                      darkMode 
+                        ? 'bg-green-600 text-white hover:bg-green-700' 
+                        : 'bg-emerald-500 text-white hover:bg-emerald-600'
+                    }`}
+                  >
+                    <Play size={20} />
+                    Resume
+                  </button>
+                )}
+                <button
+                  onClick={stopTracking}
+                  disabled={!currentNote.trim()}
+                  className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition shadow-md ${
+                    darkMode 
+                      ? 'bg-gray-700 text-gray-100 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-600' 
+                      : 'bg-rose-500 text-white hover:bg-rose-600 disabled:bg-gray-300 disabled:text-gray-500'
+                  } disabled:cursor-not-allowed`}
+                >
+                  <Square size={20} />
+                  Stop
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Stats View */}
+        {showStats && (
+          <div className={`rounded-xl p-6 shadow-lg mb-6 ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'}`}>
+            <div className="flex items-center gap-2 mb-4">
+              <TrendingUp size={20} className={darkMode ? 'text-purple-400' : 'text-purple-600'} />
+              <h3 className={`font-semibold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>Statistics</h3>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+              <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-purple-50'}`}>
+                <div className={`text-sm mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Entries</div>
+                <div className={`text-2xl font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>{entries.length}</div>
+              </div>
+              <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-pink-50'}`}>
+                <div className={`text-sm mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Hours</div>
+                <div className={`text-2xl font-bold ${darkMode ? 'text-pink-400' : 'text-pink-600'}`}>{formatHours(getTotalSeconds(entries))}h</div>
+              </div>
+              <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-blue-50'}`}>
+                <div className={`text-sm mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>This Week</div>
+                <div className={`text-2xl font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{thisWeekHours.toFixed(1)}h</div>
+              </div>
+            </div>
+
+            <div>
+              <h4 className={`text-sm font-medium mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Time by Category</h4>
+              <div className="space-y-2">
+                {Object.entries(getCategoryBreakdown(entries))
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([category, duration]) => {
+                    const percentage = (duration / getTotalSeconds(entries)) * 100;
+                    return (
+                      <div key={category}>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>{category}</span>
+                          <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>{formatHours(duration)}h ({percentage.toFixed(0)}%)</span>
+                        </div>
+                        <div className={`h-2 rounded-full overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                          <div 
+                            className="h-full bg-gradient-to-r from-purple-500 to-pink-500"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Search and Filter */}
+        <div className={`rounded-xl p-5 shadow-lg mb-6 ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'}`}>
+          <div className="grid md:grid-cols-2 gap-3 mb-4">
+            <div className="relative">
+              <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} size={18} />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search..."
+                className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  darkMode 
+                    ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400 focus:ring-purple-500' 
+                    : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-400'
+                }`}
+              />
+            </div>
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className={`px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                darkMode 
+                  ? 'bg-gray-700 border-gray-600 text-gray-100 focus:ring-purple-500' 
+                  : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-400'
+              }`}
+            >
+              <option value="">All Categories</option>
+              {CATEGORIES.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div className="flex gap-2">
+            <button
+              onClick={() => setViewMode('today')}
+              className={`flex-1 px-4 py-2 rounded-lg font-medium transition ${
+                viewMode === 'today' 
+                  ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md'
+                  : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Today
+            </button>
+            <button
+              onClick={() => setViewMode('daily')}
+              className={`flex-1 px-4 py-2 rounded-lg font-medium transition ${
+                viewMode === 'daily' 
+                  ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md'
+                  : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Daily
+            </button>
+            <button
+              onClick={() => setViewMode('weekly')}
+              className={`flex-1 px-4 py-2 rounded-lg font-medium transition ${
+                viewMode === 'weekly' 
+                  ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md'
+                  : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Weekly
+            </button>
+            <button
+              onClick={exportToCSV}
+              className={`px-4 py-2 rounded-lg font-medium transition ${
+                darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              title="Export to CSV"
+            >
+              <Download size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* Entries View */}
+        <div className="space-y-4">
+          {viewMode === 'today' ? (
+            (() => {
+              const today = new Date().toISOString().split('T')[0];
+              const todayEntries = getEntriesForDay(today);
+              const totalTime = getTotalTime(todayEntries);
+              
+              return (
+                <div className={`rounded-xl p-6 shadow-lg ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'}`}>
+                  <div className="flex justify-between items-center mb-4">
+                    <div className="flex items-center gap-2">
+                      <Calendar size={20} className={darkMode ? 'text-purple-400' : 'text-purple-600'} />
+                      <h2 className={`text-lg font-semibold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>Today</h2>
+                    </div>
+                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{totalTime}</span>
+                  </div>
+                  
+                  {todayEntries.length === 0 ? (
+                    <p className={`text-center py-8 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No work logged today</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {todayEntries.map(entry => (
+                        <div key={entry.id} className={`p-4 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                          {editingId === entry.id ? (
+                            <div className="space-y-3">
+                              <input
+                                type="text"
+                                value={editText}
+                                onChange={(e) => setEditText(e.target.value)}
+                                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                                  darkMode 
+                                    ? 'bg-gray-600 border-gray-500 text-gray-100 focus:ring-purple-500' 
+                                    : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-400'
+                                }`}
+                                autoFocus
+                              />
+                              <select
+                                value={editCategory}
+                                onChange={(e) => setEditCategory(e.target.value)}
+                                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                                  darkMode 
+                                    ? 'bg-gray-600 border-gray-500 text-gray-100 focus:ring-purple-500' 
+                                    : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-400'
+                                }`}
+                              >
+                                {CATEGORIES.map(cat => (
+                                  <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                              </select>
+                              <div>
+                                <label className={`block text-xs mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                  Duration (HH:MM)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={editDuration}
+                                  onChange={(e) => setEditDuration(e.target.value)}
+                                  placeholder="e.g., 2:30"
+                                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                                    darkMode 
+                                      ? 'bg-gray-600 border-gray-500 text-gray-100 placeholder-gray-400 focus:ring-purple-500' 
+                                      : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-400'
+                                  }`}
+                                />
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => saveEdit(entry.id)}
+                                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                                >
+                                  <Check size={18} className="mx-auto" />
+                                </button>
+                                <button
+                                  onClick={cancelEdit}
+                                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                                >
+                                  <X size={18} className="mx-auto" />
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex justify-between items-start mb-2">
+                                <div className="flex-1">
+                                  <div className={`font-medium mb-2 ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{entry.note}</div>
+                                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs ${darkMode ? 'bg-gray-600 text-gray-300' : 'bg-purple-100 text-purple-700'}`}>
+                                    <Tag size={12} />
+                                    {entry.category || 'Other'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 ml-4">
+                                  <span className={`font-semibold whitespace-nowrap ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>{formatTime(entry.duration)}</span>
+                                  <button
+                                    onClick={() => startEditing(entry)}
+                                    className={`p-2 rounded-lg transition ${darkMode ? 'hover:bg-gray-600 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-200 text-gray-500 hover:text-gray-700'}`}
+                                  >
+                                    <Edit2 size={16} />
+                                  </button>
+                                  <button
+                                    onClick={() => deleteEntry(entry.id)}
+                                    className={`p-2 rounded-lg transition ${darkMode ? 'hover:bg-gray-600 text-gray-400 hover:text-red-400' : 'hover:bg-gray-200 text-gray-500 hover:text-red-600'}`}
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()
+          ) : viewMode === 'daily' ? (
+            getPastDays().map(date => {
+              const dayEntries = getEntriesForDay(date);
+              const totalTime = getTotalTime(dayEntries);
+              const isExpanded = expandedDays.includes(date);
+              
+              return (
+                <div key={date} className={`rounded-xl p-6 shadow-lg ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'}`}>
+                  <div 
+                    className="flex justify-between items-center cursor-pointer"
+                    onClick={() => toggleDay(date)}
+                  >
+                    <div className="flex items-center gap-2">
+                      {isExpanded ? (
+                        <ChevronDown size={20} className={darkMode ? 'text-purple-400' : 'text-purple-600'} />
+                      ) : (
+                        <ChevronRight size={20} className={darkMode ? 'text-purple-400' : 'text-purple-600'} />
+                      )}
+                      <h2 className={`text-lg font-semibold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{getDayLabel(date)}</h2>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                        {dayEntries.length} {dayEntries.length === 1 ? 'entry' : 'entries'}
+                      </span>
+                      <span className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{totalTime}</span>
+                    </div>
+                  </div>
+                  
+                  {isExpanded && (
+                    <div className="mt-4">
+                      {dayEntries.length === 0 && addingToDate !== date ? (
+                        <p className={`text-center py-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No work logged</p>
+                      ) : null}
+                      
+                      {/* Add Entry Form for this date */}
+                      {addingToDate === date && (
+                        <div className={`p-4 rounded-lg border mb-3 ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                          <h4 className={`text-sm font-semibold mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Add Entry for {getDayLabel(date)}</h4>
+                          <div className="space-y-3">
+                            <input
+                              type="text"
+                              value={newEntryNote}
+                              onChange={(e) => setNewEntryNote(e.target.value)}
+                              placeholder="What did you work on?"
+                              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                                darkMode 
+                                  ? 'bg-gray-600 border-gray-500 text-gray-100 placeholder-gray-400 focus:ring-purple-500' 
+                                  : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-400'
+                              }`}
+                              autoFocus
+                            />
+                            <select
+                              value={newEntryCategory}
+                              onChange={(e) => setNewEntryCategory(e.target.value)}
+                              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                                darkMode 
+                                  ? 'bg-gray-600 border-gray-500 text-gray-100 focus:ring-purple-500' 
+                                  : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-400'
+                              }`}
+                            >
+                              <option value="">Select category...</option>
+                              {CATEGORIES.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                              ))}
+                            </select>
+                            <div>
+                              <label className={`block text-xs mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                Duration (HH:MM)
+                              </label>
+                              <input
+                                type="text"
+                                value={newEntryDuration}
+                                onChange={(e) => setNewEntryDuration(e.target.value)}
+                                placeholder="e.g., 2:30"
+                                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                                  darkMode 
+                                    ? 'bg-gray-600 border-gray-500 text-gray-100 placeholder-gray-400 focus:ring-purple-500' 
+                                    : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-400'
+                                }`}
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={addManualEntry}
+                                disabled={!newEntryNote.trim() || !newEntryDuration}
+                                className={`flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:bg-gray-500 disabled:cursor-not-allowed`}
+                              >
+                                Add
+                              </button>
+                              <button
+                                onClick={cancelAddEntry}
+                                className={`flex-1 px-4 py-2 rounded-lg transition ${
+                                  darkMode 
+                                    ? 'bg-gray-600 text-gray-300 hover:bg-gray-500' 
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {dayEntries.length > 0 && (
+                        <div className="space-y-3">
+                          {dayEntries.map(entry => (
+                            <div key={entry.id} className={`p-4 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                              {editingId === entry.id ? (
+                                <div className="space-y-3">
+                                  <input
+                                    type="text"
+                                    value={editText}
+                                    onChange={(e) => setEditText(e.target.value)}
+                                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                                      darkMode 
+                                        ? 'bg-gray-600 border-gray-500 text-gray-100 focus:ring-purple-500' 
+                                        : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-400'
+                                    }`}
+                                    autoFocus
+                                  />
+                                  <select
+                                    value={editCategory}
+                                    onChange={(e) => setEditCategory(e.target.value)}
+                                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                                      darkMode 
+                                        ? 'bg-gray-600 border-gray-500 text-gray-100 focus:ring-purple-500' 
+                                        : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-400'
+                                    }`}
+                                  >
+                                    {CATEGORIES.map(cat => (
+                                      <option key={cat} value={cat}>{cat}</option>
+                                    ))}
+                                  </select>
+                                  <div>
+                                    <label className={`block text-xs mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                      Duration (HH:MM)
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={editDuration}
+                                      onChange={(e) => setEditDuration(e.target.value)}
+                                      placeholder="e.g., 2:30"
+                                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                                        darkMode 
+                                          ? 'bg-gray-600 border-gray-500 text-gray-100 placeholder-gray-400 focus:ring-purple-500' 
+                                          : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-400'
+                                      }`}
+                                    />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => saveEdit(entry.id)}
+                                      className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                                    >
+                                      <Check size={18} className="mx-auto" />
+                                    </button>
+                                    <button
+                                      onClick={cancelEdit}
+                                      className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                                    >
+                                      <X size={18} className="mx-auto" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="flex justify-between items-start">
+                                    <div className="flex-1">
+                                      <div className={`font-medium mb-2 ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{entry.note}</div>
+                                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs ${darkMode ? 'bg-gray-600 text-gray-300' : 'bg-purple-100 text-purple-700'}`}>
+                                        <Tag size={12} />
+                                        {entry.category || 'Other'}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 ml-4">
+                                      <span className={`font-semibold whitespace-nowrap ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>{formatTime(entry.duration)}</span>
+                                      <button
+                                        onClick={() => startEditing(entry)}
+                                        className={`p-2 rounded-lg transition ${darkMode ? 'hover:bg-gray-600 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-200 text-gray-500 hover:text-gray-700'}`}
+                                      >
+                                        <Edit2 size={16} />
+                                      </button>
+                                      <button
+                                        onClick={() => deleteEntry(entry.id)}
+                                        className={`p-2 rounded-lg transition ${darkMode ? 'hover:bg-gray-600 text-gray-400 hover:text-red-400' : 'hover:bg-gray-200 text-gray-500 hover:text-red-600'}`}
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Add New Entry Button for this date */}
+                      {addingToDate !== date && (
+                        <button
+                          onClick={() => setAddingToDate(date)}
+                          className={`w-full mt-3 px-4 py-2 rounded-lg font-medium transition border-2 border-dashed ${
+                            darkMode 
+                              ? 'border-gray-600 text-gray-400 hover:border-green-500 hover:text-green-400 hover:bg-gray-700' 
+                              : 'border-gray-300 text-gray-500 hover:border-green-500 hover:text-green-600 hover:bg-green-50'
+                          }`}
+                        >
+                          + Add Entry
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            getPastWeeks().map(weekStart => {
+              const weekEntries = getEntriesForWeek(weekStart);
+              const totalTime = getTotalTime(weekEntries);
+              const categoryBreakdown = getCategoryBreakdown(weekEntries);
+              const isExpanded = expandedWeeks.includes(weekStart);
+              
+              return (
+                <div key={weekStart} className={`rounded-xl p-6 shadow-lg ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'}`}>
+                  <div 
+                    className="flex justify-between items-center cursor-pointer"
+                    onClick={() => toggleWeek(weekStart)}
+                  >
+                    <div className="flex items-center gap-2">
+                      {isExpanded ? (
+                        <ChevronDown size={20} className={darkMode ? 'text-purple-400' : 'text-purple-600'} />
+                      ) : (
+                        <ChevronRight size={20} className={darkMode ? 'text-purple-400' : 'text-purple-600'} />
+                      )}
+                      <h2 className={`text-lg font-semibold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{getWeekLabel(weekStart)}</h2>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                        {weekEntries.length} {weekEntries.length === 1 ? 'entry' : 'entries'}
+                      </span>
+                      <span className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{totalTime}</span>
+                    </div>
+                  </div>
+                  
+                  {isExpanded && (
+                    <div className="mt-4">
+                      {weekEntries.length === 0 ? (
+                        <p className={`text-center py-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No work logged</p>
+                      ) : (
+                        <>
+                          <div className={`mb-4 pb-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                            <h3 className={`text-sm font-semibold mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Category Breakdown</h3>
+                            <div className="grid grid-cols-2 gap-3">
+                              {Object.entries(categoryBreakdown).map(([category, duration]) => (
+                                <div key={category} className={`p-2 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                                  <div className="flex justify-between text-sm">
+                                    <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>{category}</span>
+                                    <span className={`font-medium ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>{formatTime(duration)}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <h3 className={`text-sm font-semibold mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>All Entries</h3>
+                            {weekEntries.map(entry => (
+                              <div key={entry.id} className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                <div className="flex justify-between items-start">
+                                  <div className="flex-1">
+                                    <div className={`text-sm font-medium mb-1 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{entry.note}</div>
+                                    <div className="flex flex-wrap gap-2 items-center">
+                                      <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{getDayLabel(entry.date)}</span>
+                                      <span className={`text-xs ${darkMode ? 'text-gray-600' : 'text-gray-300'}`}>•</span>
+                                      <span className={`inline-flex items-center gap-1 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        <Tag size={10} />
+                                        {entry.category || 'Other'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <span className={`text-sm ml-4 font-medium whitespace-nowrap ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>{formatTime(entry.duration)}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
